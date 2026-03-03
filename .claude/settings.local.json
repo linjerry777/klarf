@@ -1,0 +1,28 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(go mod tidy)",
+      "Bash(go build ./...)",
+      "Bash(docker-compose up -d)",
+      "Bash(until docker inspect --format='{{.State.Health.Status}}' klarf_mysql)",
+      "Bash(do sleep 3)",
+      "Bash(printf \".\")",
+      "Bash(done)",
+      "Bash(docker exec klarf_mysql mysql -uklarf_user -pklarf_pass klarf_db -e \"SELECT LOT_ID, WAFER_ID, LAYER_ID, scandate, DATEDIFF\\(NOW\\(\\), scandate\\) AS days_ago FROM source ORDER BY LOT_ID, WAFER_ID;\")",
+      "WebFetch(domain:artwork.com)",
+      "WebFetch(domain:yieldwerx.com)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(go build -o export ./mock_export/)",
+      "Bash(docker exec klarf_mysql mysql -uklarf_user -pklarf_pass klarf_db -e \"DELETE FROM source; DELETE FROM target;\")",
+      "Bash(docker exec klarf_mysql mysql -uklarf_user -pklarf_pass klarf_db 2)",
+      "Bash(/dev/null -e \":*)",
+      "Bash(./export --LOT_ID LOT001 --WAFER_ID WAFER01 --LAYER_ID IMD1 --output_dir ./klarf_output)",
+      "Bash(go build -o klarf-processor.exe .)",
+      "Bash(go run .)",
+      "Bash(go build -o export.exe ./mock_export/)",
+      "Bash(go version)",
+      "Bash(go get github.com/sijms/go-ora/v2@latest)"
+    ]
+  }
+}

@@ -1,0 +1,25 @@
+database:
+  host:     "127.0.0.1"
+  port:     3306
+  user:     "klarf_user"
+  password: "klarf_pass"
+  dbname:   "klarf_db"
+
+worker:
+  count: 6
+
+export:
+  command:    "./export.exe"    # CMD 可執行檔路徑（根目錄，Windows 需 .exe）
+  output_dir: "./klarf_output"  # KLARF 文件輸出目錄
+
+polling:
+  source_interval:     "5m"  # 多久重新掃描 source table
+  target_interval:     "1m"  # 多久 poll 一次 target table
+  target_max_attempts: 10    # 最多 poll 幾次（10次 = 10分鐘 timeout）
+
+retry:
+  max_attempts: 3  # CMD 失敗後最多重試幾次
+
+log:
+  level: "info"              # debug | info | warn | error
+  file:  "./logs/klarf.log"  # 同時寫入檔案，留空則只輸出 stdout

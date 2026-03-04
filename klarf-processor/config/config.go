@@ -59,7 +59,8 @@ type WorkerConfig struct {
 
 type ExportConfig struct {
 	Command   string `yaml:"command"`
-	OutputDir string `yaml:"output_dir"`
+	TempDir   string `yaml:"temp_dir"`   // CMD 產出的 KLARF 先寫到此暫存目錄
+	OutputDir string `yaml:"output_dir"` // 後續搬移的最終目錄（可選）
 }
 
 type PollingConfig struct {
@@ -73,8 +74,9 @@ type RetryConfig struct {
 }
 
 type LogConfig struct {
-	Level string `yaml:"level"`
-	File  string `yaml:"file"`
+	Level     string `yaml:"level"`
+	File      string `yaml:"file"`
+	WorkerDir string `yaml:"worker_dir"` // 每個 worker 獨立 log 的目錄，空則不輸出
 }
 
 // ─── Raw YAML (duration fields as string) ────────────────────────────────────
@@ -146,8 +148,11 @@ func Load(path string) (*Config, error) {
 	if cfg.Retry.MaxAttempts <= 0 {
 		cfg.Retry.MaxAttempts = 3
 	}
+	if cfg.Export.TempDir == "" {
+		cfg.Export.TempDir = "./klarf_temp"
+	}
 	if cfg.Export.OutputDir == "" {
-		cfg.Export.OutputDir = "."
+		cfg.Export.OutputDir = "./klarf_output"
 	}
 
 	return cfg, nil

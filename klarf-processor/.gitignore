@@ -1,0 +1,17 @@
+# ── Compiled binaries ────────────────────────────────────────────────────────
+*.exe
+*.out
+klarf-processor
+export
+
+# ── Runtime output directories ────────────────────────────────────────────────
+klarf_temp/
+klarf_output/
+logs/
+
+# ── Go toolchain ──────────────────────────────────────────────────────────────
+vendor/
+
+# ── IDE / local settings ──────────────────────────────────────────────────────
+.env
+*.local

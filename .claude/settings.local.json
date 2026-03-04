@@ -22,7 +22,12 @@
       "Bash(go run .)",
       "Bash(go build -o export.exe ./mock_export/)",
       "Bash(go version)",
-      "Bash(go get github.com/sijms/go-ora/v2@latest)"
+      "Bash(go get github.com/sijms/go-ora/v2@latest)",
+      "Bash(./klarf-processor.exe)",
+      "Bash(docker exec klarf_mysql mysql -uklarf_user -pklarf_pass klarf_db -e \"SELECT COUNT\\(*\\) as source_rows FROM source; SELECT COUNT\\(*\\) as target_rows FROM target;\")",
+      "Bash(Get-Content \"C:\\\\Users\\\\User\\\\Documents\\\\GitHub\\\\klarf\\\\klarf-processor\\\\logs\\\\klarf.log\" -Tail 20)",
+      "Bash(Remove-Item -Recurse -Force klarf_temp* -ErrorAction SilentlyContinue)",
+      "Bash(Remove-Item -Recurse -Force logsworkers* -ErrorAction SilentlyContinue)"
     ]
   }
 }

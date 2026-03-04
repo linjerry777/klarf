@@ -1,4 +1,5 @@
 database:
+  driver:   "mysql"         # "mysql" 或 "oracle"
   host:     "127.0.0.1"
   port:     3306
   user:     "klarf_user"
@@ -9,17 +10,19 @@ worker:
   count: 6
 
 export:
-  command:    "./export.exe"    # CMD 可執行檔路徑（根目錄，Windows 需 .exe）
-  output_dir: "./klarf_output"  # KLARF 文件輸出目錄
+  command:    "./export.exe"   # Linux/macOS: "./export"
+  temp_dir:   "./klarf_temp"   # CMD 產出的 KLARF 先寫到這裡
+  output_dir: "./klarf_output" # （保留欄位，可供後續搬移用）
 
 polling:
-  source_interval:     "5m"  # 多久重新掃描 source table
-  target_interval:     "1m"  # 多久 poll 一次 target table
-  target_max_attempts: 10    # 最多 poll 幾次（10次 = 10分鐘 timeout）
+  source_interval:     "5m"  # 多久重新掃描 source table（run-once 模式不使用）
+  target_interval:     "1s"  # 多久 poll 一次 target table
+  target_max_attempts: 10    # 最多 poll 幾次（10次 × 1s = 10秒 timeout）
 
 retry:
   max_attempts: 3  # CMD 失敗後最多重試幾次
 
 log:
-  level: "info"              # debug | info | warn | error
-  file:  "./logs/klarf.log"  # 同時寫入檔案，留空則只輸出 stdout
+  level:      "info"               # debug | info | warn | error
+  file:       "./logs/klarf.log"   # 主 log（stdout + 檔案）
+  worker_dir: "./logs/workers"     # 每個 worker 獨立 log 目錄（空則不輸出）

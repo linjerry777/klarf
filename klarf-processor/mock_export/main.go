@@ -1,5 +1,12 @@
-// mock_export 模擬真實的 export 指令，根據 LOT/WAFER/LAYER 產生符合規格的 KLARF 1.1 文件。
-// 使用方式：./export --LOT_ID <id> --WAFER_ID <id> --LAYER_ID <id> [--output_dir <dir>]
+// mock_export 模擬真實的 export 指令，產生符合 KLARF 1.1 規格的文件。
+//
+// 檔名格式：{LOT_ID}.{seq:03d}
+//   例：LOT_ID=PN0014.00 → PN0014.00.001, PN0014.00.002 ...
+//   序號由當前 temp_dir 內已有的同 LOT 檔案數量決定（+1）。
+//
+// 使用方式：
+//
+//	./export --LOT_ID <id> --WAFER_ID <id> --LAYER_ID <id> --output_dir <dir>
 package main
 
 import (
@@ -9,15 +16,16 @@ import (
 	"math/rand"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 )
 
 func main() {
-	lotID   := flag.String("LOT_ID",     "",               "Lot ID (required)")
-	waferID := flag.String("WAFER_ID",   "",               "Wafer ID (required)")
-	layerID := flag.String("LAYER_ID",   "",               "Layer ID (required)")
-	outDir  := flag.String("output_dir", "./klarf_output", "KLARF output directory")
+	lotID   := flag.String("LOT_ID",     "",              "Lot ID (required)")
+	waferID := flag.String("WAFER_ID",   "",              "Wafer ID (required)")
+	layerID := flag.String("LAYER_ID",   "",              "Layer ID (required)")
+	outDir  := flag.String("output_dir", "./klarf_temp",  "KLARF output directory")
 	flag.Parse()
 
 	if *lotID == "" || *waferID == "" || *layerID == "" {
@@ -27,14 +35,19 @@ func main() {
 
 	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
 
-	// 模擬處理時間 (300ms ~ 1500ms)
+	// 模擬處理時間 300ms ~ 1500ms
 	delay := time.Duration(300+rng.Intn(1200)) * time.Millisecond
-	fmt.Printf("[mock-export] LOT=%-8s WAFER=%-8s LAYER=%-10s  processing (%.1fs)...\n",
+	fmt.Printf("[mock-export] LOT=%-12s WAFER=%-8s LAYER=%-10s  processing (%.1fs)...\n",
 		*lotID, *waferID, *layerID, delay.Seconds())
 	time.Sleep(delay)
 
-	// 產生 KLARF 內容
-	content := buildKlarf(*lotID, *waferID, *layerID, rng)
+	// ── 模擬：約 15% 機率 CMD 成功但不產出任何檔案 ──────────────────────────
+	// 對應真實情境：export 程式正常結束但因某些原因未寫入 KLARF
+	if rng.Intn(100) < 15 {
+		fmt.Printf("[mock-export] WARNING: simulated no-file-produced for LOT=%s WAFER=%s LAYER=%s\n",
+			*lotID, *waferID, *layerID)
+		os.Exit(0) // exit 0（CMD 成功），但沒有寫入任何檔案
+	}
 
 	// 確保輸出目錄存在
 	if err := os.MkdirAll(*outDir, 0o755); err != nil {
@@ -42,15 +55,42 @@ func main() {
 		os.Exit(1)
 	}
 
-	// 寫入 KLARF 文件
-	fname := fmt.Sprintf("%s_%s_%s.klarf", *lotID, *waferID, *layerID)
+	// 決定下一個序號：掃描 outDir 內所有以 lotID 為前綴的檔案
+	seq := nextSequence(*outDir, *lotID)
+	fname := fmt.Sprintf("%s.%03d", *lotID, seq)
 	path  := filepath.Join(*outDir, fname)
+
+	// 產生 KLARF 內容
+	content := buildKlarf(*lotID, *waferID, *layerID, rng)
+
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		fmt.Fprintf(os.Stderr, "[mock-export] write %s: %v\n", path, err)
 		os.Exit(1)
 	}
 
-	fmt.Printf("[mock-export] KLARF written → %s\n", path)
+	fmt.Printf("[mock-export] KLARF written → %s  (seq=%03d)\n", path, seq)
+}
+
+// nextSequence 掃描 dir 內所有以 lotID 為前綴、且後綴為 .NNN（數字）的檔案，
+// 回傳目前最大序號 +1（從 1 開始）。
+func nextSequence(dir, lotID string) int {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return 1
+	}
+
+	max := 0
+	prefix := lotID + "."
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasPrefix(e.Name(), prefix) {
+			continue
+		}
+		suffix := e.Name()[len(prefix):]
+		if n, err := strconv.Atoi(suffix); err == nil && n > max {
+			max = n
+		}
+	}
+	return max + 1
 }
 
 // ─── KLARF Builder ────────────────────────────────────────────────────────────
@@ -111,12 +151,10 @@ func buildKlarf(lotID, waferID, layerID string, rng *rand.Rand) string {
 		dsize := math.Sqrt(area)
 		cls   := rng.Intn(5)
 
-		// 最後一筆結尾加分號（KLARF 格式規定）
 		end := ""
 		if i == numDefects {
 			end = ";"
 		}
-
 		fmt.Fprintf(&b, " %d %.10e %.10e %d %d %.6f %.6f %.6f %.10e %d 1 0 0 0%s\n",
 			i, xrel, yrel, xi, yi, xsz, ysz, area, dsize, cls, end)
 
@@ -139,7 +177,6 @@ func buildKlarf(lotID, waferID, layerID string, rng *rand.Rand) string {
 }
 
 // slotFromWaferID 從 WaferID 字串尾端萃取數字作為 Slot 編號。
-// e.g. "WAFER01" → 1, "W25" → 25, "WAFER" → 1
 func slotFromWaferID(id string) int {
 	n := 0
 	for _, c := range id {

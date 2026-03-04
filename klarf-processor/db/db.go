@@ -1,6 +1,7 @@
 package db
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"time"
@@ -51,24 +52,26 @@ func (d *DB) Close() error {
 // ─── Queries ─────────────────────────────────────────────────────────────────
 
 // QuerySource 回傳 source table 中 scandate 超過 7 天的所有資料。
-func (d *DB) QuerySource() ([]Record, error) {
+// ctx 取消時（Ctrl+C 或 timeout），查詢立刻中止，不會無限等待 DB 回應。
+func (d *DB) QuerySource(ctx context.Context) ([]Record, error) {
+	// 同一 LOT+WAFER 群組內，依 scandate 由舊到新排序，確保 Worker 串行執行時順序正確。
 	// MySQL : DATE_SUB(NOW(), INTERVAL 7 DAY)
 	// Oracle: SYSDATE - 7
 	q := `
 		SELECT id, LOT_ID, WAFER_ID, LAYER_ID, scandate
 		FROM   source
 		WHERE  scandate < DATE_SUB(NOW(), INTERVAL 7 DAY)
-		ORDER  BY LOT_ID, WAFER_ID, LAYER_ID
+		ORDER  BY LOT_ID, WAFER_ID, scandate ASC
 	`
 	if d.driver == "oracle" {
 		q = `
 		SELECT id, LOT_ID, WAFER_ID, LAYER_ID, scandate
 		FROM   source
 		WHERE  scandate < SYSDATE - 7
-		ORDER  BY LOT_ID, WAFER_ID, LAYER_ID
+		ORDER  BY LOT_ID, WAFER_ID, scandate ASC
 	`
 	}
-	rows, err := d.conn.Query(q)
+	rows, err := d.conn.QueryContext(ctx, q) // ← QueryContext：ctx 取消即返回
 	if err != nil {
 		return nil, fmt.Errorf("query source: %w", err)
 	}
@@ -86,7 +89,8 @@ func (d *DB) QuerySource() ([]Record, error) {
 }
 
 // ExistsInTarget 確認 target table 是否已有對應的 LOT+WAFER+LAYER 資料。
-func (d *DB) ExistsInTarget(lotID, waferID, layerID string) (bool, error) {
+// ctx 取消時查詢立刻中止，避免 pollTarget 在 DB 無回應時無限等待。
+func (d *DB) ExistsInTarget(ctx context.Context, lotID, waferID, layerID string) (bool, error) {
 	// MySQL : ? placeholders
 	// Oracle: :1 :2 :3 named placeholders
 	q := `
@@ -102,7 +106,8 @@ func (d *DB) ExistsInTarget(lotID, waferID, layerID string) (bool, error) {
 	`
 	}
 	var count int
-	if err := d.conn.QueryRow(q, lotID, waferID, layerID).Scan(&count); err != nil {
+	// ← QueryRowContext：ctx 取消即返回，不會卡在 DB 等待
+	if err := d.conn.QueryRowContext(ctx, q, lotID, waferID, layerID).Scan(&count); err != nil {
 		return false, fmt.Errorf("query target: %w", err)
 	}
 	return count > 0, nil

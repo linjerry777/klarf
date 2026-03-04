@@ -13,7 +13,7 @@ import (
 
 // ─── Job ─────────────────────────────────────────────────────────────────────
 
-// Job 代表同一組 LOT+WAFER 下的所有 LAYER。
+// Job 代表同一組 LOT+WAFER 下的所有 LAYER（已依 scandate ASC 排序）。
 // 相同 LOT+WAFER 的 Job 保證由同一個 Worker 串行執行。
 type Job struct {
 	LotID   string
@@ -32,24 +32,29 @@ type Pool struct {
 }
 
 // NewPool 建立並立即啟動 Worker Pool。
+// 每個 Worker 擁有獨立的 logger（寫入 logs/workers/worker_{id}.log）。
 // ctx 取消時，Worker 會在完成當前操作後結束。
 func NewPool(ctx context.Context, count int, cfg *config.Config, log *logger.Logger, database *db.DB, stats *logger.Stats) *Pool {
-	proc := processor.New(cfg, database, log, stats)
-
 	p := &Pool{
 		count:    count,
 		channels: make([]chan Job, count),
 	}
 
 	for i := 0; i < count; i++ {
-		ch := make(chan Job, 50) // buffered channel，避免 Submit 在瞬間高負載時阻塞
+		// 每個 Worker 建立獨立 logger，自動帶 worker_id 欄位
+		workerLog := logger.NewWorkerLogger(i, cfg.Log)
+
+		// 每個 Worker 建立獨立 Processor（共用 DB 連線池，但 log 獨立）
+		proc := processor.New(cfg, database, workerLog, stats)
+
+		ch := make(chan Job, 50) // buffered channel，避免 Submit 在高負載時阻塞
 		p.channels[i] = ch
 
 		w := &worker{
 			id:    i,
 			jobCh: ch,
 			proc:  proc,
-			log:   log,
+			log:   workerLog,
 		}
 
 		p.wg.Add(1)
@@ -59,7 +64,8 @@ func NewPool(ctx context.Context, count int, cfg *config.Config, log *logger.Log
 		}(w)
 	}
 
-	log.Info("worker pool started", "workers", count)
+	log.Info("worker pool started", "workers", count,
+		"worker_log_dir", cfg.Log.WorkerDir)
 	return p
 }
 
@@ -89,19 +95,18 @@ type worker struct {
 
 // run 是每個 Worker 的主迴圈：
 //   - 從 channel 取 Job 並處理
-//   - channel 關閉 或 ctx 取消時正常退出
+//   - channel 關閉或 ctx 取消時正常退出
 func (w *worker) run(ctx context.Context) {
-	w.log.Info("worker started", "worker_id", w.id)
+	w.log.Info("worker started")
 
 	for {
 		select {
 		case job, ok := <-w.jobCh:
 			if !ok {
-				w.log.Info("worker channel closed, exiting", "worker_id", w.id)
+				w.log.Info("worker channel closed, exiting")
 				return
 			}
 			w.log.Info("worker picked up job",
-				"worker_id", w.id,
 				"lot_id", job.LotID,
 				"wafer_id", job.WaferID,
 				"layer_count", len(job.Layers),
@@ -109,7 +114,7 @@ func (w *worker) run(ctx context.Context) {
 			w.proc.Process(ctx, job.LotID, job.WaferID, job.Layers)
 
 		case <-ctx.Done():
-			w.log.Info("worker context cancelled, exiting", "worker_id", w.id)
+			w.log.Info("worker context cancelled, exiting")
 			return
 		}
 	}
